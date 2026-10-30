@@ -2,11 +2,12 @@
 <html lang="en"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="description" content="Merge, split, edit and convert PDFs to Word in your browser. Files never leave your device.">
+<meta name="description" content="Merge, split, edit and convert PDFs to Word, and type out handwriting, in your browser. Files never leave your device.">
 <style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
 <title>Paper Desk</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@600&display=swap">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Arimo:ital,wght@0,400;0,700;1,400;1,700&display=swap">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Tinos:ital,wght@0,400;0,700;1,400;1,700&display=swap">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cousine:ital,wght@0,400;0,700;1,400;1,700&display=swap">
@@ -197,6 +198,20 @@ button,input,select{font:inherit;color:inherit}
 .toast.err{background:var(--danger);color:#fff}
 .toggle{display:flex;gap:10px;align-items:center;font-size:14px;cursor:pointer}
 .info{font-size:13px;padding:10px 12px;border-radius:9px;background:color-mix(in srgb,var(--action) 10%,transparent);margin:0}
+.ocrlist{display:grid;gap:12px}
+.ocrcard{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:14px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px}
+@media (max-width:640px){.ocrcard{grid-template-columns:minmax(0,1fr)}}
+.ocrimg{display:grid;gap:8px;align-content:start;min-width:0}
+.ocrimg img{width:100%;border-radius:6px;border:1px solid var(--line);background:#fff}
+.ocrimg .acts{justify-content:flex-start}
+.ocrtext{display:grid;grid-template-rows:auto minmax(0,1fr);gap:8px;min-width:0}
+.ocrhead{display:flex;flex-wrap:wrap;gap:6px 10px;justify-content:space-between;align-items:baseline}
+.ocrst{font:500 12px/1 var(--f-mono);color:var(--muted)}
+.ocrst.ok{color:var(--g3)}.ocrst.mid{color:var(--g2)}.ocrst.low{color:var(--danger)}
+.ocrtext textarea{width:100%;min-height:220px;resize:vertical;border:1px solid var(--line);border-radius:9px;background:var(--sunk);padding:10px 12px;font:15px/1.55 var(--f-body);color:var(--ink)}
+.savebtns{display:flex;flex-wrap:wrap;gap:6px}
+.ghost{border:1px solid var(--line);background:var(--surface);padding:8px 12px;border-radius:9px;cursor:pointer;font-weight:500;font-size:14px}
+.ghost:disabled{opacity:.45;cursor:not-allowed}
 .foot{color:var(--muted);font-size:12px;text-align:center;margin:0}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -207,13 +222,14 @@ button,input,select{font:inherit;color:inherit}
   <header class="top">
     <div class="brand">
       <svg class="mark" viewBox="0 0 44 52" aria-hidden="true"><rect x="8" y="2" width="34" height="44" rx="4" fill="var(--surface)" stroke="var(--ink)" stroke-width="2"/><rect x="2" y="7" width="34" height="43" rx="4" fill="var(--accent)" stroke="var(--ink)" stroke-width="2"/><path d="M9 20h20M9 27h20M9 34h13" stroke="var(--ink)" stroke-width="2.4" stroke-linecap="round"/></svg>
-      <div><h1>Paper Desk</h1><p>Merge, split, edit and convert PDFs. <b>Files are processed on this device</b> and never uploaded.</p></div>
+      <div><h1>Paper Desk</h1><p>Merge, split, edit and convert PDFs, and type out handwriting. <b>Files are processed on this device</b> and never uploaded.</p></div>
     </div>
     <nav class="tabs" role="tablist" aria-label="Tools">
       <button role="tab" id="tab-merge" data-view="merge" aria-selected="true">Merge</button>
       <button role="tab" id="tab-split" data-view="split" aria-selected="false">Split</button>
       <button role="tab" id="tab-edit" data-view="edit" aria-selected="false">Edit</button>
       <button role="tab" id="tab-convert" data-view="convert" aria-selected="false">PDF to Word</button>
+      <button role="tab" id="tab-ocr" data-view="ocr" aria-selected="false">Handwriting</button>
     </nav>
   </header>
 
@@ -387,6 +403,28 @@ button,input,select{font:inherit;color:inherit}
     </aside>
   </section>
 
+  <!-- HANDWRITING -->
+  <section class="view" id="view-ocr" role="tabpanel" aria-labelledby="tab-ocr" hidden>
+    <div class="tray">
+      <div class="drop" data-drop="ocr">
+        <div><strong>Add photos or scans of handwriting</strong><span>JPG, PNG or PDF. On a phone you can take a photo straight away. Add as many pages as you like.</span></div>
+        <label class="pick">Add pages<input id="ocrInput" type="file" multiple accept="image/*,.pdf,application/pdf"></label>
+      </div>
+      <div id="ocrList" class="ocrlist"></div>
+    </div>
+    <aside class="panel">
+      <div><div class="eyebrow">Free text reader</div><h2>Handwriting to text</h2></div>
+      <dl class="stats"><div><dt>Pages</dt><dd id="oPages">0</dd></div><div><dt>Words</dt><dd id="oWords">0</dd></div></dl>
+      <label class="field">Language<select id="ocrLang"><option value="eng">English</option><option value="afr">Afrikaans</option><option value="por">Portuguese</option><option value="fra">French</option></select></label>
+      <label class="toggle"><input type="checkbox" id="ocrClean" checked> Clean up photos (shadows, faint ink)</label>
+      <button class="primary" id="ocrGo">Read handwriting</button>
+      <div class="savebtns"><button class="ghost" id="ocrCopy">Copy text</button><button class="ghost" id="ocrDocx">Save as Word</button><button class="ghost" id="ocrTxt">Save as .txt</button></div>
+      <label class="field">File name<input type="text" id="ocrName" value="handwriting.docx"></label>
+      <p class="hint">Works best with neat, separate letters on plain or lined paper, photographed straight on in good light. Joined-up writing will have mistakes, so check and correct the text before saving. The first read downloads the reader (about 10 MB) once.</p>
+      <p class="notice" id="ocrViewerNote" hidden>The reader downloads its files from the internet, which this Claude preview blocks. Use Paper Desk from your GitHub link to read handwriting.</p>
+    </aside>
+  </section>
+
   <p class="foot">Works with standard PDFs. Scanned pages are pictures, so their text can be covered and retyped but not edited in place. Password-protected PDFs need to be unlocked first.</p>
 </div>
 
@@ -395,6 +433,7 @@ button,input,select{font:inherit;color:inherit}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>
@@ -1402,13 +1441,114 @@ $("convGo").addEventListener("click",()=>{ const btn=$("convGo"); busy(btn, asyn
   await offer(safeName($("convName").value,baseName(conv.name),".docx"), blob);
 }); });
 
+/* ======================================================================
+   HANDWRITING — free text reader (Tesseract.js, runs in the browser)
+   ====================================================================== */
+const ocr={pages:[],worker:null,lang:null,busy:false};
+function pageImg(cv,rot,maxW){ const s=Math.min(1,(maxW||99999)/Math.max(cv.width,cv.height)); const sw=rot%180?cv.height:cv.width, sh=rot%180?cv.width:cv.height;
+  const c=document.createElement("canvas"); c.width=Math.round(sw*s); c.height=Math.round(sh*s); const x=c.getContext("2d"); x.fillStyle="#fff"; x.fillRect(0,0,c.width,c.height);
+  x.translate(c.width/2,c.height/2); x.rotate(rot*Math.PI/180); x.drawImage(cv,-cv.width*s/2,-cv.height*s/2,cv.width*s,cv.height*s); return c; }
+function cleanUp(c){
+  const w=c.width,h=c.height,ctx=c.getContext("2d"); const img=ctx.getImageData(0,0,w,h), d=img.data; const g=new Float64Array(w*h);
+  for(let i=0,j=0;i<d.length;i+=4,j++) g[j]=d[i]*0.299+d[i+1]*0.587+d[i+2]*0.114;
+  const I=new Float64Array((w+1)*(h+1)); for(let y=0;y<h;y++){ let row=0; for(let x=0;x<w;x++){ row+=g[y*w+x]; I[(y+1)*(w+1)+x+1]=I[y*(w+1)+x+1]+row; } }
+  const r=Math.max(8,Math.round(Math.max(w,h)/40)), t=0.13;
+  for(let y=0;y<h;y++){ const y0=Math.max(0,y-r), y1=Math.min(h,y+r+1); for(let x=0;x<w;x++){ const x0=Math.max(0,x-r), x1=Math.min(w,x+r+1);
+    const sum=I[y1*(w+1)+x1]-I[y0*(w+1)+x1]-I[y1*(w+1)+x0]+I[y0*(w+1)+x0]; const v=g[y*w+x]*(x1-x0)*(y1-y0)<=sum*(1-t)?0:255; const k=(y*w+x)*4; d[k]=d[k+1]=d[k+2]=v; d[k+3]=255; } }
+  ctx.putImageData(img,0,0); return c; }
+async function addOcrFiles(files){
+  if(ocr.pages.length&&ocr.pages.every(p=>p.sample)) ocr.pages.length=0;
+  for(const f of files){
+    try{
+      if(isPdf(f)){ const pdf=await openPdf(await readBytes(f));
+        for(let i=0;i<pdf.numPages;i++){ const pg=await pdf.getPage(i+1); const v=pg.getViewport({scale:1}); const vp=pg.getViewport({scale:Math.min(3,2200/Math.max(v.width,v.height))});
+          const c=document.createElement("canvas"); c.width=Math.ceil(vp.width); c.height=Math.ceil(vp.height); const x=c.getContext("2d"); x.fillStyle="#fff"; x.fillRect(0,0,c.width,c.height); await pg.render({canvasContext:x,viewport:vp}).promise;
+          ocr.pages.push({key:nid(),name:`${f.name} · page ${i+1}`,src:c,rot:0,text:"",conf:null,status:"ready"}); renderOcr(); }
+        pdf.destroy();
+      } else if(/^image\//.test(f.type)||/\.(png|jpe?g|webp|gif|bmp)$/i.test(f.name)){
+        const url=URL.createObjectURL(f); const im=await new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=url; });
+        const c=document.createElement("canvas"); c.width=im.naturalWidth; c.height=im.naturalHeight; c.getContext("2d").drawImage(im,0,0); URL.revokeObjectURL(url);
+        ocr.pages.push({key:nid(),name:f.name,src:c,rot:0,text:"",conf:null,status:"ready"}); renderOcr();
+      } else toast(`${f.name} can't be opened here. Use a photo (JPG or PNG) or a PDF. iPhone HEIC photos: set the camera to "Most Compatible" or share as JPG.`, true);
+    }catch(e){ toast("Couldn't open "+f.name+".", true); }
+  }
+}
+function renderOcr(){
+  const list=$("ocrList");
+  if(!ocr.pages.length){ list.innerHTML='<div class="empty">Add a photo or scan of a handwritten page to start.</div>'; }
+  else list.innerHTML=ocr.pages.map((p,i)=>{ if(!p.thumb||p.thumbRot!==p.rot){ p.thumb=pageImg(p.src,p.rot,520).toDataURL("image/jpeg",0.85); p.thumbRot=p.rot; }
+    const st=p.status==="reading"?`Reading… ${Math.round((p.prog||0)*100)}%`:p.status==="done"?`Read · ${Math.round(p.conf)}% sure`:p.status==="error"?"Couldn't read this page":"Not read yet";
+    const cls=p.status==="done"?(p.conf>=75?"ok":p.conf>=50?"mid":"low"):"";
+    return `<article class="ocrcard" data-key="${p.key}">
+      <div class="ocrimg"><img src="${p.thumb}" alt="Handwritten page ${i+1}"><div class="acts">
+        <button class="ib" data-a="rl" aria-label="Rotate left">↺</button><button class="ib" data-a="rr" aria-label="Rotate right">↻</button><button class="ib del" data-a="del" aria-label="Remove page">${ICON.del}</button></div></div>
+      <div class="ocrtext"><div class="ocrhead"><span class="fname">${esc(p.name)}${p.sample?'<span class="chip">Sample</span>':""}</span><span class="ocrst ${cls}">${st}</span></div>
+        <textarea data-key="${p.key}" placeholder="${p.status==="done"?"No text found on this page.":"The typed-out text appears here. You can correct it before saving."}" aria-label="Text for page ${i+1}">${esc(p.text)}</textarea></div></article>`; }).join("");
+  const words=ocr.pages.reduce((s,p)=>s+(p.text.trim()?p.text.trim().split(/\s+/).length:0),0);
+  $("oPages").textContent=ocr.pages.length; $("oWords").textContent=words.toLocaleString("en-ZA");
+  const any=ocr.pages.some(p=>p.text.trim()); ["ocrCopy","ocrDocx","ocrTxt"].forEach(id=>$(id).disabled=!any); $("ocrGo").disabled=!ocr.pages.length||ocr.busy;
+}
+$("ocrList").addEventListener("click",e=>{ const b=e.target.closest("button[data-a]"); if(!b||ocr.busy) return; const i=ocr.pages.findIndex(p=>p.key===b.closest("[data-key]").dataset.key); const p=ocr.pages[i];
+  if(b.dataset.a==="del") ocr.pages.splice(i,1); else { p.rot=(p.rot+(b.dataset.a==="rr"?90:270))%360; p.status="ready"; } renderOcr(); });
+$("ocrList").addEventListener("input",e=>{ if(e.target.tagName!=="TEXTAREA") return; const p=ocr.pages.find(x=>x.key===e.target.dataset.key); if(p){ p.text=e.target.value; const words=ocr.pages.reduce((s,q)=>s+(q.text.trim()?q.text.trim().split(/\s+/).length:0),0); $("oWords").textContent=words.toLocaleString("en-ZA"); ["ocrCopy","ocrDocx","ocrTxt"].forEach(id=>$(id).disabled=!ocr.pages.some(q=>q.text.trim())); } });
+$("ocrInput").addEventListener("change",e=>{ const fs=[...e.target.files]; e.target.value=""; addOcrFiles(fs); });
+setupDrop(document.querySelector('[data-drop="ocr"]'), addOcrFiles);
+async function getWorker(lang,onProg){
+  if(!window.Tesseract) throw {userMsg:"The text reader didn't load. Check your internet connection and reload the page."};
+  if(ocr.worker&&ocr.lang===lang) return ocr.worker;
+  const timeout=ms=>new Promise((_,rej)=>setTimeout(()=>rej({userMsg:"The text reader couldn't download its reading files. Check your internet connection"+(inViewer()?", or open Paper Desk from your GitHub link — this Claude preview blocks those downloads.":".")}),ms));
+  if(ocr.worker){ await Promise.race([ocr.worker.reinitialize(lang),timeout(90000)]); ocr.lang=lang; return ocr.worker; }
+  ocr.onProg=onProg;
+  ocr.worker=await Promise.race([Tesseract.createWorker(lang,1,{logger:m=>{ if(ocr.onProg) ocr.onProg(m); }}),timeout(90000)]);
+  ocr.lang=lang; return ocr.worker;
+}
+$("ocrGo").addEventListener("click",()=>{ const btn=$("ocrGo"); busy(btn, async ()=>{
+  ocr.busy=true; const lang=$("ocrLang").value; const todo=ocr.pages.filter(p=>p.status!=="done"); const list=todo.length?todo:ocr.pages;
+  try{
+    btn.textContent="Getting the reader ready…";
+    let cur=null; const w=await getWorker(lang,m=>{ if(cur&&m.status==="recognizing text"){ cur.prog=m.progress; const el=document.querySelector(`.ocrcard[data-key="${cur.key}"] .ocrst`); if(el) el.textContent=`Reading… ${Math.round(m.progress*100)}%`; } else if(!cur&&m.progress!=null) btn.textContent=`Getting the reader ready… ${Math.round(m.progress*100)}%`; });
+    for(const [k,p] of list.entries()){
+      cur=p; p.status="reading"; p.prog=0; renderOcr(); btn.textContent=`Reading page ${k+1} of ${list.length}…`;
+      try{ let c=pageImg(p.src,p.rot,2400); if($("ocrClean").checked) c=cleanUp(c);
+        const {data}=await w.recognize(c); p.text=(data.text||"").replace(/[ \t]+\n/g,"\n").replace(/\n{3,}/g,"\n\n").trim(); p.conf=data.confidence||0; p.status="done"; }
+      catch(e){ console.error(e); p.status="error"; }
+      renderOcr();
+    }
+    cur=null; const low=list.filter(p=>p.status==="done"&&p.conf<60).length;
+    toast(low?`Done. ${low} page${low>1?"s were":" was"} hard to read — check the text carefully.`:"Done. Check the text, then save it.");
+  } finally { ocr.busy=false; }
+}); });
+const ocrAll=()=>ocr.pages.map(p=>p.text.trim()).filter(Boolean).join("\n\n");
+$("ocrCopy").addEventListener("click",()=>{ const t=ocrAll(); const fallback=()=>{ const ta=document.querySelector("#ocrList textarea"); if(ta){ ta.focus(); ta.select(); } toast("Copying isn't allowed here. The text is selected so you can copy it yourself.", true); };
+  try{ navigator.clipboard.writeText(t).then(()=>toast("Text copied"),fallback); }catch(_){ fallback(); } });
+$("ocrTxt").addEventListener("click",()=>offer(safeName($("ocrName").value.replace(/\.(docx|txt)$/i,""),"handwriting",".txt"), new Blob([ocrAll()],{type:"text/plain"})));
+$("ocrDocx").addEventListener("click",()=>busy($("ocrDocx"), async ()=>{
+  const paras=ocrAll().split(/\n{2,}/).map(par=>`<w:p><w:pPr><w:spacing w:after="160"/></w:pPr>${par.split("\n").map((ln,i)=>(i?"<w:r><w:br/></w:r>":"")+`<w:r><w:t xml:space="preserve">${xesc(ln)}</w:t></w:r>`).join("")}</w:p>`).join("");
+  const zip=new JSZip();
+  zip.file("[Content_Types].xml",`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>`);
+  zip.file("_rels/.rels",`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`);
+  zip.file("word/_rels/document.xml.rels",`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`);
+  zip.file("word/styles.xml",`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri" w:eastAsia="Calibri"/><w:sz w:val="22"/><w:szCs w:val="22"/><w:lang w:val="en-ZA"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="160" w:line="259" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style></w:styles>`);
+  zip.file("word/document.xml",`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body>${paras||"<w:p/>"}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr></w:body></w:document>`);
+  await offer(safeName($("ocrName").value.replace(/\.(docx|txt)$/i,""),"handwriting",".docx"), await zip.generateAsync({type:"blob",mimeType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document"}));
+}));
+async function ocrSample(){
+  try{ await document.fonts.load('56px "Caveat"'); }catch(_){}
+  const c=document.createElement("canvas"); c.width=1400; c.height=1000; const x=c.getContext("2d");
+  x.fillStyle="#fffdf6"; x.fillRect(0,0,c.width,c.height); x.strokeStyle="#bcd3ec"; x.lineWidth=2; for(let y=170;y<c.height;y+=78){ x.beginPath(); x.moveTo(0,y); x.lineTo(c.width,y); x.stroke(); }
+  x.strokeStyle="#e8a3a3"; x.beginPath(); x.moveTo(120,0); x.lineTo(120,c.height); x.stroke();
+  x.fillStyle="#1d2b6b"; x.font='600 60px "Caveat", "Segoe Print", cursive';
+  ["Delivery for Mrs Dube","20 box files and 4 staplers","Paid R1250 cash on Friday","Call back on Monday morning"].forEach((t,i)=>x.fillText(t,150,150+78*(i+1)-14));
+  ocr.pages.push({key:nid(),name:"Sample handwritten note",src:c,rot:0,text:"",conf:null,status:"ready",sample:true}); renderOcr();
+}
+
 /* ---------- tabs ---------- */
-const VIEWS=["merge","split","edit","convert"];
+const VIEWS=["merge","split","edit","convert","ocr"];
 function show(v){ if(!VIEWS.includes(v)) v="merge"; VIEWS.forEach(n=>{ $("view-"+n).hidden=n!==v; $("tab-"+n).setAttribute("aria-selected",n===v); }); if(v==="edit") requestAnimationFrame(edRefresh); }
 document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>{ show(b.dataset.view); try{ history.replaceState(null,"","#"+b.dataset.view); }catch(_){ location.hash=b.dataset.view; } });
 window.addEventListener("hashchange",()=>show(location.hash.slice(1)));
 
-function refreshAll(){ renderMerge(); renderSplit(); renderConv(); document.querySelectorAll(".saveoff").forEach(n=>n.hidden=!(inViewer()&&!downloads)); }
+function refreshAll(){ renderMerge(); renderSplit(); renderConv(); renderOcr(); $("ocrViewerNote").hidden=!inViewer(); document.querySelectorAll(".saveoff").forEach(n=>n.hidden=!(inViewer()&&!downloads)); }
 
 /* ---------- samples ---------- */
 async function sample(title, lines, pages){
@@ -1437,6 +1577,7 @@ async function boot(){
     await edLoad({name:"Sample quote Q-1042.pdf"}, new Uint8Array(q), "replace", true);
     await loadSplit({name:"Sample price list.pdf"}, new Uint8Array(pl), true);
     await loadConv({name:"Sample quote Q-1042.pdf"}, new Uint8Array(q), true);
+    await ocrSample();
   }catch(e){ console.error(e); }
 }
 function getDl(){ if(inViewer()){ window.claude.use("downloads").then(d=>{ downloads=d; refreshAll(); }).catch(()=>refreshAll()); return true; } return false; }
