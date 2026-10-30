@@ -2,7 +2,7 @@
 <html lang="en"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="description" content="Merge, split and edit PDFs in your browser. Files never leave your device.">
+<meta name="description" content="Merge, split, edit and convert PDFs to Word in your browser. Files never leave your device.">
 <style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
 <title>Paper Desk</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -195,6 +195,8 @@ button,input,select{font:inherit;color:inherit}
 
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));z-index:60;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:14px;max-width:calc(100% - 32px);box-shadow:var(--shadow)}
 .toast.err{background:var(--danger);color:#fff}
+.toggle{display:flex;gap:10px;align-items:center;font-size:14px;cursor:pointer}
+.info{font-size:13px;padding:10px 12px;border-radius:9px;background:color-mix(in srgb,var(--action) 10%,transparent);margin:0}
 .foot{color:var(--muted);font-size:12px;text-align:center;margin:0}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -205,12 +207,13 @@ button,input,select{font:inherit;color:inherit}
   <header class="top">
     <div class="brand">
       <svg class="mark" viewBox="0 0 44 52" aria-hidden="true"><rect x="8" y="2" width="34" height="44" rx="4" fill="var(--surface)" stroke="var(--ink)" stroke-width="2"/><rect x="2" y="7" width="34" height="43" rx="4" fill="var(--accent)" stroke="var(--ink)" stroke-width="2"/><path d="M9 20h20M9 27h20M9 34h13" stroke="var(--ink)" stroke-width="2.4" stroke-linecap="round"/></svg>
-      <div><h1>Paper Desk</h1><p>Merge, split and edit PDFs. <b>Files are processed on this device</b> and never uploaded.</p></div>
+      <div><h1>Paper Desk</h1><p>Merge, split, edit and convert PDFs. <b>Files are processed on this device</b> and never uploaded.</p></div>
     </div>
     <nav class="tabs" role="tablist" aria-label="Tools">
       <button role="tab" id="tab-merge" data-view="merge" aria-selected="true">Merge</button>
       <button role="tab" id="tab-split" data-view="split" aria-selected="false">Split</button>
       <button role="tab" id="tab-edit" data-view="edit" aria-selected="false">Edit</button>
+      <button role="tab" id="tab-convert" data-view="convert" aria-selected="false">PDF to Word</button>
     </nav>
   </header>
 
@@ -359,6 +362,29 @@ button,input,select{font:inherit;color:inherit}
       <nav class="thumbs" id="thumbs" aria-label="Pages"></nav>
       <div class="docwrap" id="docwrap"><div class="doc" id="doc"></div></div>
     </div>
+  </section>
+
+  <!-- CONVERT -->
+  <section class="view" id="view-convert" role="tabpanel" aria-labelledby="tab-convert" hidden>
+    <div class="tray">
+      <div class="drop" data-drop="convert">
+        <div><strong>Choose a PDF to turn into a Word document</strong><span>You get an editable .docx that opens in Microsoft Word or Google Docs.</span></div>
+        <label class="pick">Choose PDF<input id="convInput" type="file" accept=".pdf,application/pdf"></label>
+      </div>
+      <div class="docbar"><h3 id="convTitle"></h3><span class="fmeta" id="convMeta"></span></div>
+      <div class="grid" id="convGrid"></div>
+    </div>
+    <aside class="panel">
+      <div><div class="eyebrow">Make it editable</div><h2>PDF to Word</h2></div>
+      <dl class="stats"><div><dt>Pages</dt><dd id="cPages">0</dd></div><div><dt>Words</dt><dd id="cWords">0</dd></div></dl>
+      <p class="info" id="convScan" hidden></p>
+      <label class="toggle"><input type="checkbox" id="convPics" checked> Include pictures and logos</label>
+      <label class="toggle"><input type="checkbox" id="convBreaks" checked> Start each PDF page on a new page</label>
+      <label class="field">File name<input type="text" id="convName" value="converted.docx"></label>
+      <button class="primary" id="convGo">Convert and save Word file</button>
+      <p class="hint">Text, fonts, sizes, bold, italics, colours and pictures carry over. Tables and columns come across as tab-aligned text and may need some tidying in Word.</p>
+      <p class="notice saveoff" hidden>Saving files isn't available in this view. Open this page on claude.ai to save results.</p>
+    </aside>
   </section>
 
   <p class="foot">Works with standard PDFs. Scanned pages are pictures, so their text can be covered and retyped but not edited in place. Password-protected PDFs need to be unlocked first.</p>
@@ -1113,13 +1139,180 @@ $("edSave").addEventListener("click",()=>{ blurText(); busy($("edSave"), async (
   if(fell) setTimeout(()=>toast("Some fonts couldn't be downloaded, so standard fonts were used for those edits.", true),3400);
 }); });
 
+/* ======================================================================
+   CONVERT — PDF to Word (.docx), rebuilt as editable paragraphs
+   ====================================================================== */
+let conv=null;
+async function loadConv(file, bytesIn, sample){
+  try{
+    const bytes=bytesIn||await readBytes(file); const pdf=await openPdf(bytes);
+    conv={name:file.name,bytes,n:pdf.numPages,pages:[],sample}; $("convName").value=baseName(file.name)+".docx"; renderConv();
+    for(let i=0;i<pdf.numPages;i++){
+      const th=await renderThumb(pdf,i,150); let words=0;
+      try{ const tc=await (await pdf.getPage(i+1)).getTextContent(); words=tc.items.map(t=>t.str).join(" ").split(/\s+/).filter(Boolean).length; }catch(_){}
+      conv.pages[i]={...th,words}; renderConv();
+    }
+    pdf.destroy();
+  }catch(e){ fileError(e,file.name); }
+}
+function renderConv(){
+  const g=$("convGrid");
+  if(!conv){ g.innerHTML='<div class="empty" style="grid-column:1/-1">Choose a PDF to convert.</div>'; $("convGo").disabled=true; return; }
+  $("convTitle").innerHTML=esc(conv.name)+(conv.sample?'<span class="chip">Sample</span>':"");
+  $("convMeta").textContent=conv.n+" pages · "+kb(conv.bytes.length);
+  g.innerHTML=[...Array(conv.n).keys()].map(i=>{ const t=conv.pages[i];
+    return `<div class="pcard"><div class="pimg">${t?`<img src="${t.url}" alt="Page ${i+1}">`:""}</div><div class="pfoot"><span class="pnum">p. ${i+1}</span><span>${t?(t.words?t.words+" words":"picture only"):""}</span></div></div>`; }).join("");
+  const done=conv.pages.filter(Boolean); const words=done.reduce((s,p)=>s+p.words,0); const scans=done.filter(p=>!p.words).length;
+  $("cPages").textContent=conv.n; $("cWords").textContent=words.toLocaleString("en-ZA");
+  $("convScan").hidden=!scans; $("convScan").textContent = scans===conv.n && done.length===conv.n ? "This PDF has no selectable text, so it looks scanned. Its pages will come across as pictures in Word, not editable text." : `${scans} page${scans>1?"s have":" has"} no selectable text (scanned). ${scans>1?"Those pages":"That page"} will come across as pictures.`;
+  $("convGo").disabled=false;
+}
+$("convInput").addEventListener("change",e=>{ const f=e.target.files[0]; e.target.value=""; if(f) loadConv(f); });
+setupDrop(document.querySelector('[data-drop="convert"]'), fs=>{ const f=fs.find(isPdf); f?loadConv(f):toast("Drop a PDF file to convert.", true); });
+
+const xesc = s => String(s).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F￾￿]/g,"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+function wordFont(raw,key){
+  let n=(raw||"").replace(/^[A-Z]{6}\+/,"").split(/[-,]/)[0].replace(/(PSMT|PS|MT)$/,"").replace(/([a-z])([A-Z])/g,"$1 $2").trim();
+  const std={Helvetica:"Arial",Times:"Times New Roman","Times Roman":"Times New Roman",Courier:"Courier New",Symbol:"Symbol"};
+  if(std[n]) return std[n];
+  return /^[A-Za-z][A-Za-z0-9 ]{1,40}$/.test(n)?n:key;
+}
+async function pdfToDocx(bytes, opts, onProg){
+  const pdf=await openPdf(bytes); const OPS=pdfjsLib.OPS, U=pdfjsLib.Util; const pages=[];
+  for(let pn=1;pn<=pdf.numPages;pn++){
+    onProg(pn,pdf.numPages);
+    const page=await pdf.getPage(pn); const vp=page.getViewport({scale:1}); const SC=2; const vp2=page.getViewport({scale:SC});
+    const c=document.createElement("canvas"); c.width=Math.ceil(vp2.width); c.height=Math.ceil(vp2.height); const ctx=c.getContext("2d",{willReadFrequently:true});
+    ctx.fillStyle="#fff"; ctx.fillRect(0,0,c.width,c.height); await page.render({canvasContext:ctx,viewport:vp2}).promise;
+    const tc=await page.getTextContent(); const finfo={};
+    const info=fn=>{ if(finfo[fn]) return finfo[fn]; let raw="",bold=false,italic=false; try{ const f=page.commonObjs.get(fn); raw=f.name||""; bold=!!f.bold||!!f.black; italic=!!f.italic; }catch(_){}
+      const st=tc.styles[fn]||{}; const nm=raw.toLowerCase(); bold=bold||/bold|black|heavy|semibold|demibold/.test(nm); italic=italic||/italic|oblique/.test(nm);
+      let asc=st.ascent||0.8, desc=Math.abs(st.descent||0.2); if(asc<0.5||asc>1.2) asc=0.8; if(desc<0.1||desc>0.5) desc=0.22;
+      return finfo[fn]={font:wordFont(raw,mapFont(raw,st.fontFamily)),bold,italic,asc,desc}; };
+    const colorAt=(x,y,w,h)=>{ try{ const sx=Math.max(0,Math.floor(x*SC)), sy=Math.max(0,Math.floor(y*SC)), sw=Math.max(1,Math.min(c.width-sx,Math.ceil(w*SC))), sh=Math.max(1,Math.min(c.height-sy,Math.ceil(h*SC)));
+        const d=ctx.getImageData(sx,sy,sw,sh).data; let best=null,bd=-1; for(let i=0;i<d.length;i+=4){ const l=d[i]*0.3+d[i+1]*0.59+d[i+2]*0.11; const dist=255-l; if(dist>bd){ bd=dist; best=[d[i],d[i+1],d[i+2]]; } }
+        if(!best||bd<60) return null; if(best.every(v=>v<70)) return null; return toHex(...best).slice(1).toUpperCase(); }catch(_){ return null; } };
+    // text items in view space (pt, y down)
+    const items=[];
+    for(const it of tc.items){ if(!it.str) continue; const m=U.transform(vp.transform,it.transform);
+      if(m[0]<=0||Math.abs(m[1])>0.05*m[0]) continue; const size=Math.hypot(m[2],m[3]); if(size<2) continue; const f=info(it.fontName);
+      items.push({s:it.str,x:m[4],y:m[5],w:it.width*(m[0]/Math.hypot(it.transform[0],it.transform[1])||1),size,f,fn:it.fontName}); }
+    items.sort((a,b)=>a.y-b.y||a.x-b.x);
+    const lines=[];
+    for(const it of items){ let ln=null; for(let k=lines.length-1;k>=Math.max(0,lines.length-4);k--) if(Math.abs(lines[k].y-it.y)<it.size*0.35){ ln=lines[k]; break; } if(!ln){ ln={y:it.y,items:[]}; lines.push(ln); } ln.items.push(it); }
+    const L=[];
+    for(const ln of lines){
+      ln.items.sort((a,b)=>a.x-b.x); const segs=[]; let seg=null, lastX1=-1e9, size=0, asc=0, desc=0;
+      for(const it of ln.items){
+        if(!seg && !it.s.trim()) continue;
+        const gap=it.x-lastX1;
+        if(!seg || gap>Math.max(it.size*1.6,14)){ if(!it.s.trim()) continue; seg={x:it.x,x1:it.x+it.w,runs:[]}; segs.push(seg); }
+        else if(gap>it.size*0.15 && seg.runs.length && !/\s$/.test(seg.runs[seg.runs.length-1].t) && !/^\s/.test(it.s)) seg.runs[seg.runs.length-1].t+=" ";
+        const col=it.s.trim()?colorAt(it.x,it.y-it.f.asc*it.size,it.w,(it.f.asc+it.f.desc)*it.size*0.9):null;
+        const st={font:it.f.font,b:it.f.bold,i:it.f.italic,sz:Math.round(it.size*2),c:col}; const last=seg.runs[seg.runs.length-1];
+        if(last && last.font===st.font&&last.b===st.b&&last.i===st.i&&last.sz===st.sz&&(last.c===st.c||!it.s.trim())) last.t+=it.s; else seg.runs.push({...st,t:it.s});
+        seg.x1=Math.max(seg.x1,it.x+it.w); lastX1=Math.max(lastX1,it.x+it.w); size=Math.max(size,it.size); asc=Math.max(asc,it.f.asc*it.size); desc=Math.max(desc,it.f.desc*it.size);
+      }
+      segs.forEach(s=>{ const r=s.runs[s.runs.length-1]; if(r) r.t=r.t.replace(/\s+$/,""); });
+      if(segs.length) L.push({base:ln.y,top:ln.y-asc,bottom:ln.y+desc,x0:segs[0].x,x1:segs[segs.length-1].x1,size,segs});
+    }
+    // pictures from the drawing operators
+    const imgs=[];
+    if(opts.pics){ try{
+      const ol=await page.getOperatorList(); let ctm=vp.transform.slice(); const stack=[];
+      const paint=new Set([OPS.paintImageXObject,OPS.paintInlineImageXObject,OPS.paintImageMaskXObject].filter(v=>v!=null));
+      for(let i=0;i<ol.fnArray.length;i++){ const fn=ol.fnArray[i], a=ol.argsArray[i];
+        if(fn===OPS.save) stack.push(ctm.slice()); else if(fn===OPS.restore){ if(stack.length) ctm=stack.pop(); }
+        else if(fn===OPS.transform) ctm=U.transform(ctm,a);
+        else if(fn===OPS.paintFormXObjectBegin){ stack.push(ctm.slice()); if(Array.isArray(a&&a[0])&&a[0].length===6) ctm=U.transform(ctm,a[0]); }
+        else if(fn===OPS.paintFormXObjectEnd){ if(stack.length) ctm=stack.pop(); }
+        else if(paint.has(fn)){ const pts=[[0,0],[1,0],[0,1],[1,1]].map(p=>U.applyTransform(p,ctm)); const xs=pts.map(p=>p[0]), ys=pts.map(p=>p[1]);
+          const x=Math.max(0,Math.min(...xs)), y=Math.max(0,Math.min(...ys)), x2=Math.min(vp.width,Math.max(...xs)), y2=Math.min(vp.height,Math.max(...ys));
+          if(x2-x>=10&&y2-y>=10) imgs.push({x,y,w:x2-x,h:y2-y}); }
+      }
+    }catch(e){ console.warn(e); } }
+    const area=vp.width*vp.height; let pics=imgs.filter((m,i)=>!imgs.some((n,j)=>j<i&&Math.abs(n.x-m.x)<1&&Math.abs(n.y-m.y)<1&&Math.abs(n.w-m.w)<1));
+    if(L.length) pics=pics.filter(m=>m.w*m.h<area*0.85);
+    if(!L.length && !pics.length && opts.pics===false){} 
+    if(!L.length && !pics.length && items.length===0) pics=[{x:0,y:0,w:vp.width,h:vp.height}];
+    for(const m of pics){ const cc=document.createElement("canvas"); cc.width=Math.max(1,Math.round(m.w*SC)); cc.height=Math.max(1,Math.round(m.h*SC)); cc.getContext("2d").drawImage(c,m.x*SC,m.y*SC,m.w*SC,m.h*SC,0,0,cc.width,cc.height);
+      m.data=new Uint8Array(await (await new Promise(r=>cc.toBlob(r,"image/jpeg",0.9))).arrayBuffer()); }
+    pages.push({w:vp.width,h:vp.height,lines:L,pics});
+  }
+  pdf.destroy();
+  // document margins
+  const lefts=[],rights=[],tops=[];
+  for(const p of pages){ const xs=[...p.lines.map(l=>l.x0),...p.pics.map(m=>m.x)], x1s=[...p.lines.map(l=>l.x1),...p.pics.map(m=>m.x+m.w)], ts=[...p.lines.map(l=>l.top),...p.pics.map(m=>m.y)];
+    if(xs.length){ lefts.push(Math.min(...xs)); rights.push(p.w-Math.max(...x1s)); tops.push(Math.min(...ts)); } }
+  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+  const PW=pages[0]?pages[0].w:595, PH=pages[0]?pages[0].h:842;
+  const ML=clamp(lefts.length?Math.min(...lefts):72,18,108), MR=clamp(rights.length?Math.min(...rights):72,18,108), MT=clamp(tops.length?Math.min(...tops):72,18,108), MB=36;
+  const TW=PW-ML-MR; const tw=v=>Math.round(v*20);
+  const runXml=r=>{ const rp=`<w:rPr><w:rFonts w:ascii="${xesc(r.font)}" w:hAnsi="${xesc(r.font)}" w:cs="${xesc(r.font)}"/>${r.b?"<w:b/>":""}${r.i?"<w:i/>":""}${r.c?`<w:color w:val="${r.c}"/>`:""}<w:sz w:val="${r.sz}"/><w:szCs w:val="${r.sz}"/></w:rPr>`;
+    return r.t?`<w:r>${rp}<w:t xml:space="preserve">${xesc(r.t)}</w:t></w:r>`:""; };
+  let body="", rid=10, did=1; const media=[];
+  pages.forEach((p,pi)=>{
+    const R=p.w-MR, mid=(ML+R)/2;
+    // paragraphs
+    const paras=[];
+    for(const ln of p.lines){
+      const prev=paras[paras.length-1]; const single=ln.segs.length===1;
+      if(prev&&prev.kind==="t"&&prev.single&&single&&Math.abs(ln.size-prev.size)<prev.size*0.15&&Math.abs(ln.x0-prev.lastX0)<ln.size*0.8
+        &&ln.base-prev.lastBase>ln.size*0.85&&ln.base-prev.lastBase<ln.size*1.7&&prev.lastX1>R-ln.size*10){
+        const runs=prev.segs[0].runs, lr=runs[runs.length-1]; const first=ln.segs[0].runs[0];
+        if(lr&&/-$/.test(lr.t)&&first&&/^[a-z]/.test(first.t)) lr.t=lr.t.slice(0,-1); else if(lr) lr.t+=" ";
+        runs.push(...ln.segs[0].runs); prev.gaps.push(ln.base-prev.lastBase); prev.lastBase=ln.base; prev.lastX0=ln.x0; prev.lastX1=ln.x1; prev.bottom=ln.bottom; prev.lines++; prev.x1=Math.max(prev.x1,ln.x1);
+      } else paras.push({kind:"t",single,segs:ln.segs,size:ln.size,top:ln.top,bottom:ln.bottom,x0:ln.x0,x1:ln.x1,lastBase:ln.base,lastX0:ln.x0,lastX1:ln.x1,lines:1,gaps:[]});
+    }
+    for(const m of p.pics) paras.push({kind:"i",top:m.y,bottom:m.y+m.h,x0:m.x,m});
+    paras.sort((a,b)=>a.top-b.top);
+    let prevBottom=MT; if(!paras.length) paras.push({kind:"e",top:MT,bottom:MT});
+    paras.forEach((q,qi)=>{
+      const before=clamp(q.top-prevBottom,0,400); prevBottom=Math.max(prevBottom,q.bottom);
+      const pb=(qi===0&&pi>0&&opts.breaks)?"<w:pageBreakBefore/>":"";
+      if(q.kind==="e"){ body+=`<w:p><w:pPr>${pb}</w:pPr></w:p>`; return; }
+      if(q.kind==="i"){
+        const m=q.m; let w=m.w, h=m.h; if(w>TW){ h=h*TW/w; w=TW; } const id=rid++, n=did++; media.push({id,name:`image${n}.jpeg`,data:m.data});
+        const cx=Math.round(w*12700), cy=Math.round(h*12700); const ind=clamp(m.x-ML,0,TW-w);
+        body+=`<w:p><w:pPr>${pb}<w:spacing w:before="${tw(before)}" w:after="0"/><w:ind w:left="${tw(ind)}"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${n}" name="Picture ${n}"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${n}" name="image${n}.jpeg"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rId${id}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
+        return;
+      }
+      const segs=q.segs; let jc="", ind=clamp(q.x0-ML,0,TW*0.9), tabs="";
+      if(segs.length===1&&q.lines===1){
+        if(Math.abs((q.x0+q.x1)/2-mid)<5&&q.x0-ML>24){ jc="center"; ind=0; }
+        else if(Math.abs(q.x1-R)<4&&q.x0-ML>TW*0.4){ jc="right"; ind=0; }
+      }
+      if(segs.length>1){ tabs="<w:tabs>"+segs.slice(1).map(s=>Math.abs(s.x1-R)<4&&s.x1-s.x<TW*0.4?`<w:tab w:val="right" w:pos="${tw(s.x1-ML)}"/>`:`<w:tab w:val="left" w:pos="${tw(clamp(s.x-ML,0,TW))}"/>`).join("")+"</w:tabs>"; }
+      const gap=q.gaps.length?q.gaps.reduce((a,b)=>a+b,0)/q.gaps.length:0;
+      const spacing=`<w:spacing w:before="${tw(before)}" w:after="0" ${gap?`w:line="${tw(gap)}" w:lineRule="exact"`:`w:line="240" w:lineRule="auto"`}/>`;
+      const runs=segs.map((s,i)=>(i?`<w:r><w:tab/></w:r>`:"")+s.runs.map(runXml).join("")).join("");
+      body+=`<w:p><w:pPr>${pb}${tabs}${spacing}${ind>1?`<w:ind w:left="${tw(ind)}"/>`:""}${jc?`<w:jc w:val="${jc}"/>`:""}</w:pPr>${runs}</w:p>`;
+    });
+  });
+  const land=PW>PH;
+  const doc=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><w:body>${body}<w:sectPr><w:pgSz w:w="${tw(PW)}" w:h="${tw(PH)}"${land?' w:orient="landscape"':""}/><w:pgMar w:top="${tw(MT)}" w:right="${tw(MR)}" w:bottom="${tw(MB)}" w:left="${tw(ML)}" w:header="0" w:footer="0" w:gutter="0"/></w:sectPr></w:body></w:document>`;
+  const styles=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial" w:eastAsia="Arial"/><w:sz w:val="22"/><w:szCs w:val="22"/><w:lang w:val="en-ZA"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style></w:styles>`;
+  const rels=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>${media.map(m=>`<Relationship Id="rId${m.id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${m.name}"/>`).join("")}</Relationships>`;
+  const zip=new JSZip();
+  zip.file("[Content_Types].xml",`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="jpeg" ContentType="image/jpeg"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>`);
+  zip.file("_rels/.rels",`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/></Relationships>`);
+  zip.file("docProps/core.xml",`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${xesc(opts.title||"")}</dc:title><dc:creator>Paper Desk</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString().slice(0,19)}Z</dcterms:created></cp:coreProperties>`);
+  zip.file("word/document.xml",doc); zip.file("word/styles.xml",styles); zip.file("word/_rels/document.xml.rels",rels);
+  media.forEach(m=>zip.file("word/media/"+m.name,m.data));
+  return zip.generateAsync({type:"blob",mimeType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document"});
+}
+$("convGo").addEventListener("click",()=>{ const btn=$("convGo"); busy(btn, async ()=>{
+  const blob=await pdfToDocx(conv.bytes,{pics:$("convPics").checked,breaks:$("convBreaks").checked,title:baseName(conv.name)},(i,n)=>{ btn.textContent=`Converting page ${i} of ${n}…`; });
+  await offer(safeName($("convName").value,baseName(conv.name),".docx"), blob);
+}); });
+
 /* ---------- tabs ---------- */
-const VIEWS=["merge","split","edit"];
+const VIEWS=["merge","split","edit","convert"];
 function show(v){ if(!VIEWS.includes(v)) v="merge"; VIEWS.forEach(n=>{ $("view-"+n).hidden=n!==v; $("tab-"+n).setAttribute("aria-selected",n===v); }); if(v==="edit") requestAnimationFrame(edRefresh); }
 document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>{ show(b.dataset.view); try{ history.replaceState(null,"","#"+b.dataset.view); }catch(_){ location.hash=b.dataset.view; } });
 window.addEventListener("hashchange",()=>show(location.hash.slice(1)));
 
-function refreshAll(){ renderMerge(); renderSplit(); document.querySelectorAll(".saveoff").forEach(n=>n.hidden=!(inViewer()&&!downloads)); }
+function refreshAll(){ renderMerge(); renderSplit(); renderConv(); document.querySelectorAll(".saveoff").forEach(n=>n.hidden=!(inViewer()&&!downloads)); }
 
 /* ---------- samples ---------- */
 async function sample(title, lines, pages){
@@ -1147,6 +1340,7 @@ async function boot(){
     renderMerge();
     await edLoad({name:"Sample quote Q-1042.pdf"}, new Uint8Array(q), "replace", true);
     await loadSplit({name:"Sample price list.pdf"}, new Uint8Array(pl), true);
+    await loadConv({name:"Sample quote Q-1042.pdf"}, new Uint8Array(q), true);
   }catch(e){ console.error(e); }
 }
 function getDl(){ if(inViewer()){ window.claude.use("downloads").then(d=>{ downloads=d; refreshAll(); }).catch(()=>refreshAll()); return true; } return false; }
