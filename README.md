@@ -4,7 +4,7 @@ Merge, split and edit PDFs in the browser.
 
 - **Merge** – combine PDFs and JPG/PNG images into one PDF, in any order.
 - **Split** – every page, page ranges (e.g. `1-3, 5, 7-end`) or picked pages. Multiple results download as a .zip.
-- **Edit** – rotate, reorder, delete and insert pages; add text, white out content, page numbers and a watermark.
+- **Edit** – a Word-style editor: click any text to change it (font, size and colour are matched), add text boxes, pictures, shapes and highlights, change page backgrounds, rotate, reorder, delete and insert pages, add page numbers and a watermark. Undo and redo included.
 
 All processing happens on your own device. Files are never uploaded to a server.
 
@@ -16,4 +16,5 @@ Open the GitHub Pages link for this repository in any modern browser (Chrome, Ed
 
 - Password-protected PDFs must be unlocked first.
 - Word documents must be saved as PDF first.
-- Editing adds text on top of the page or covers content. It does not change the PDF's original text.
+- Edited text is placed over the original wording. Tick **File → Remove original text under edits** before saving if the old wording must not be recoverable (those pages are saved as images).
+- Fonts are matched to close look-alikes (e.g. Calibri → Carlito, Arial → Arimo). Scanned pages are pictures, so their text can be covered and retyped but not edited in place.
